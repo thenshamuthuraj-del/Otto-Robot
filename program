@@ -1,0 +1,155 @@
+#include <Otto.h>
+#include <Servo.h> // Library for additional servos
+
+Otto Otto; // Otto object
+
+// Main Servo Pins for Legs and Feet
+#define LeftLeg 2
+#define RightLeg 3
+#define LeftFoot 4
+#define RightFoot 5
+#define Buzzer 10
+// Additional Servo Pins for Hands and Head
+#define LeftHand 6
+#define RightHand 7
+#define Head 8
+
+// Touch Sensor Pins
+#define LeftTouchSensor A4
+#define RightTouchSensor A5
+
+// JQ6500 Audio Module Control Pins
+#define JQ_TX_PIN 10 // Serial TX to JQ6500 RX
+#define JQ_RX_PIN 11 // Serial RX from JQ6500 TX
+
+// Instantiate JQ6500 Serial
+#include <SoftwareSerial.h>
+SoftwareSerial JQSerial(JQ_RX_PIN, JQ_TX_PIN);
+
+// Create Servo objects for LeftHand, RightHand, and Head
+Servo leftHandServo;
+Servo rightHandServo;
+Servo headServo;
+
+// State variables to track touch sensor activation
+bool leftTouchActive = false;
+bool rightTouchActive = false;
+bool defaultActive = false; // Indicates if default dance is playing
+
+void setup() {
+    // Initialize Serial Monitor for debugging
+    Serial.begin(9600);
+
+    // Initialize Otto with main servos
+    Otto.init(LeftLeg, RightLeg, LeftFoot, RightFoot, true, Buzzer);
+
+    // Attach additional servos
+    leftHandServo.attach(LeftHand);
+    rightHandServo.attach(RightHand);
+    headServo.attach(Head);
+
+    // Set up touch sensors
+    pinMode(LeftTouchSensor, INPUT);
+    pinMode(RightTouchSensor, INPUT);
+
+    // Initialize JQ6500 Serial
+    JQSerial.begin(9600);
+
+    // Initial wake-up
+    Otto.home();
+    delay(50);
+    Otto.playGesture(OttoHappy);
+
+    Serial.println("Robot is ready!");
+}
+
+void loop() {
+    // Read touch sensor states
+    int leftTouch = digitalRead(LeftTouchSensor);
+    int rightTouch = digitalRead(RightTouchSensor);
+
+    if (leftTouch == HIGH && !leftTouchActive) {
+        // Stop default dance if it's playing
+        defaultActive = false;
+
+        leftTouchActive = true;
+        rightTouchActive = false;
+
+        Serial.println("Left Sensor touched");
+        moveRightDance();
+        playAudio(1); // Custom audio for left sensor touch
+
+    } else if (rightTouch == HIGH && !rightTouchActive) {
+        // Stop default dance if it's playing
+        defaultActive = false;
+
+        rightTouchActive = true;
+        leftTouchActive = false;
+
+        Serial.println("Right Sensor touched");
+        moveLeftDance();
+        playAudio(2); // Custom audio for right sensor touch
+
+    } else if (leftTouch == LOW && rightTouch == LOW && !defaultActive) {
+        // Start default dance if no sensor is touched
+        leftTouchActive = false;
+        rightTouchActive = false;
+        defaultActive = true;
+
+        Serial.println("Default dance and audio");
+        playAudio(3); // Default audio
+        defaultDance(); // Start default dance
+    }
+
+    delay(500); // Delay for readability in Serial Monitor
+}
+
+void playAudio(int audioTrack) {
+    JQSerial.write(0x7E); // Start byte
+    JQSerial.write(0x03); // Play track command
+    JQSerial.write(audioTrack); // Track number
+    JQSerial.write(0xEF); // End byte
+}
+
+void moveRightDance() {
+    Otto.moonwalker(3, 1300, 20, 1);
+    Otto.flapping(1, 1300, 15, 1);
+    leftHandServo.write(45);
+    rightHandServo.write(135);
+    headServo.write(90);
+    delay(500);
+}
+
+void moveLeftDance() {
+    Otto.moonwalker(3, 1300, 20, -1);
+    Otto.flapping(1, 1300, 15, -1);
+    leftHandServo.write(135);
+    rightHandServo.write(45);
+    headServo.write(70);
+    delay(500);
+}
+
+void defaultDance() {
+    defaultActive = true;
+
+    for (int i = 0; i < 2 && defaultActive; i++) { // Loop controlled by defaultActive
+        Otto.walk(1, 1000, 1); // Forward
+        checkTouchSensors();   // Check if sensors are touched
+        if (!defaultActive) break;
+
+        Otto.walk(1, 1000, -1); // Backward
+        checkTouchSensors();    // Check if sensors are touched
+        if (!defaultActive) break;
+    }
+    defaultActive = false;
+}
+
+void checkTouchSensors() {
+    int leftTouch = digitalRead(LeftTouchSensor);
+    int rightTouch = digitalRead(RightTouchSensor);
+
+    if (leftTouch == HIGH || rightTouch == HIGH) {
+        // Stop default dance if any sensor is touched
+        defaultActive = false;
+    }
+}
